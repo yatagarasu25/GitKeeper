@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace ConsoleApp3
+namespace GitKeeper
 {
 	public static class FileDirectorySearcher
 	{
@@ -48,42 +48,20 @@ namespace ConsoleApp3
 			}
 		}
 
-		public static IEnumerable<string> Search(string searchPath, string searchPattern, IProgress<int> progress = null)
+		public static IEnumerable<string> Search(string searchPath, string searchPattern, IProgress<int> progress = null
+			, CancellationToken cancellationToken = default)
 		{
-			return Search(searchPath, WildcardToRegex(searchPattern), progress);
+			return Search(searchPath, WildcardToRegex(searchPattern), progress, cancellationToken);
 		}
 
-		public static IEnumerable<string> Search(string searchPath, Regex match, IProgress<int> progress = null)
+		public static IEnumerable<string> Search(string searchPath, Regex match, IProgress<int> progress = null
+			, CancellationToken cancellationToken = default)
 		{
 			Contract.Requires(match != null);
 
-			foreach (string path in EnumerateFileSystemEntries(searchPath))
-			{
-				progress?.Report(1);
-
-				if (match.IsMatch(Path.GetFileName(path)))
-					yield return path;
-			}
-		}
-
-		public static async IAsyncEnumerable<string> SearchAsync(string searchPath, string searchPattern
-			, IProgress<int> progress = default
-			, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-		{
-			await foreach (var path in SearchAsync(searchPath, WildcardToRegex(searchPattern), progress).WithCancellation(cancellationToken))
-				yield return path;
-		}
-
-		public static async IAsyncEnumerable<string> SearchAsync(string searchPath, Regex match
-			, IProgress<int> progress = default
-			, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-		{
-			Contract.Requires(match != null);
-
-			foreach (var path in EnumerateFileSystemEntries(searchPath)
+			return EnumerateFileSystemEntries(searchPath)
 				.AsParallel().WithCancellation(cancellationToken)
-				.Select((path) =>
-				{
+				.Select((path) => {
 					progress?.Report(1);
 
 					if (match.IsMatch(Path.GetFileName(path)))
@@ -91,10 +69,7 @@ namespace ConsoleApp3
 
 					return string.Empty;
 				})
-				.Where((path) => !string.IsNullOrWhiteSpace(path)))
-			{
-				yield return path;
-			}
+				.Where((path) => !string.IsNullOrWhiteSpace(path));
 		}
 	}
 }

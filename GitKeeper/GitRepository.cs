@@ -5,8 +5,9 @@ using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using SystemEx;
 
-namespace ConsoleApp3
+namespace GitKeeper
 {
 	public struct GitRepositoryGroup
 	{
@@ -53,6 +54,7 @@ namespace ConsoleApp3
 		readonly Repository repository;
 		readonly Commit initialCommit;
 
+		public Repository Repository => repository;
 		public string Path => path;
 		public Commit InitialCommit => initialCommit;
 		public Branch Head => repository.Head;
@@ -70,18 +72,7 @@ namespace ConsoleApp3
 		}
 
 
-		public class AggregateExceptionSource : IDisposable
-		{
-			public List<Exception> exs = new List<Exception>();
-
-			public void Dispose()
-			{
-				if (exs.Count > 0)
-					throw new AggregateException(exs);
-			}
-		}
-
-		protected static GitRepository OpenGitRepository(string path, AggregateExceptionSource e_)
+		protected static GitRepository OpenGitRepository(string path, AggregateExceptionScope e_)
 		{
 			try
 			{
@@ -89,36 +80,23 @@ namespace ConsoleApp3
 			}
 			catch (Exception e)
 			{
-				e_.exs.Add(e);
+				e_.Aggregate(e);
 			}
 
 			return null;
 		}
 
-		public static IEnumerable<GitRepository> EnumGitRepositories(string rootPath, IProgress<int> progress = default)
-		{
-			using (var e_ = new AggregateExceptionSource())
-			{
-				foreach (var gitMarker in FileDirectorySearcher.Search(rootPath, ".git", progress))
-				{
-					var path = System.IO.Path.GetDirectoryName(gitMarker);
-					yield return OpenGitRepository(path, e_);
-				}
-			}
-		}
-
-		public static async IAsyncEnumerable<GitRepository> EnumGitRepositoriesAsync(string rootPath
+		public static IEnumerable<GitRepository> EnumGitRepositories(string rootPath
 			, IProgress<int> progress = default
-			, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+			, CancellationToken cancellationToken = default)
 		{
-			using (var e_ = new AggregateExceptionSource())
-			{
-				await foreach (var gitMarker in FileDirectorySearcher.SearchAsync(rootPath, ".git", progress, cancellationToken))
-				{
+			return FileDirectorySearcher.Search(rootPath, ".git", progress, cancellationToken)
+				.SelectValid(gitMarker => {
+					using var e_ = new AggregateExceptionScope();
+
 					var path = System.IO.Path.GetDirectoryName(gitMarker);
-					yield return OpenGitRepository(path, e_);
-				}
-			}
+					return OpenGitRepository(path, e_);
+				}).ToArray();
 		}
 	}
 }

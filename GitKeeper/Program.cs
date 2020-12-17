@@ -1,58 +1,20 @@
-﻿using System;
+﻿using ConsoleAppFramework;
+using Kurukuru;
+using LibGit2Sharp;
+using Microsoft.Extensions.Hosting;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using SystemEx;
 
-namespace ConsoleApp3
+namespace GitKeeper
 {
-	class ConsoleProgress : IProgress<int>, IDisposable
-	{
-		static readonly char[] p = new char[] { '\\', '|', '/', '-' };
-
-		int i = -1;
-		int cx, cy;
-
-		public ConsoleProgress()
-		{
-			Reset();
-		}
-
-		public void Report(int value)
-		{
-			i += value;
-
-			Console.SetCursorPosition(cx, cy);
-			Console.Write(p[i % p.Length]);
-		}
-
-		public ConsoleProgress Clear()
-		{
-			Console.SetCursorPosition(cx, cy);
-			Console.Write(' ');
-
-			return this;
-		}
-
-		public ConsoleProgress Reset()
-		{
-			i = -1;
-
-			cx = Console.CursorLeft;
-			cy = Console.CursorTop;
-
-			return this;
-		}
-
-		public void Dispose()
-		{
-			Clear();
-		}
-	}
-
-	class Program : IDisposable
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+	class Program : ConsoleAppBase
 	{
 		protected static CancellationTokenSource cancel = new CancellationTokenSource();
 
@@ -62,65 +24,100 @@ namespace ConsoleApp3
 		static async Task Main(string[] args)
 		{
 			Console.CancelKeyPress += Cancel;
-
-			Console.WriteLine("Hello World!");
-			await RunProgram(args).ConfigureAwait(false);
+			await Host.CreateDefaultBuilder().RunConsoleAppFrameworkAsync<Program>(args)
+				.ConfigureAwait(false);
 		}
 
-		public static async Task RunProgram(string[] args)
+		[Command("status")]
+		public async Task Status()
 		{
-			using (Program p = new Program(args))
-				await p.Run(args);
+			Console.WriteLine($"Configuration path: {Configuration.ConfigurationFolderPath}");
 		}
 
-		protected Program(string[] args)
+		[Command("scan")]
+		public async Task Scan([Option(0)] string path, [Option(1)] string name = "active")
 		{
-
+			await ProgressSpinner<int>.StartAsync("Searching repositories...", p => { }, async spinner => {
+				await SearchRepositories(path, progress: spinner, cancellationToken: cancel.Token).ConfigureAwait(false);
+				await SaveConfiguration(name).ConfigureAwait(false);
+			}).ConfigureAwait(false);
 		}
 
-		protected async Task Run(string[] args)
+		[Command("sync")]
+		public async Task Sync([Option(0)] string name = "active")
 		{
-			Stopwatch sw = Stopwatch.StartNew();
-
-#if false
-			//			using (var progress = new ConsoleProgress())
-			{
-				foreach (var rep in GitRepository.EnumGitRepositories(args[0]/*, progress*/))
-				{
-//					progress.Clear();
-					Console.WriteLine("{1}:{2} {0}", rep.Path, rep.InitialCommit?.Sha, rep.Head?.FriendlyName);
-//					progress.Reset();
-				}
-			}
-
-			Console.WriteLine("{0} ms sync version.", sw.ElapsedMilliseconds);
-			sw = Stopwatch.StartNew();
-#endif
 			var active = Configuration.EnumConfigurations()
-				.Where(c => c.name == $"active")
+				.Where(c => c.name == name)
 				.FirstOrDefault();
 
-			if (active != null)
-			{
-				await LoadConfiguration(active);
+			if (active == null)
+				return;
 
-				int i = 0;
-			}
-			else
-			{
-				await SearchRepositories(args[0], cancellationToken: cancel.Token);
+			await LoadConfiguration(active).ConfigureAwait(false);
 
-				await SaveConfiguration("active");
-			}
+			//var signature = new Signature(
+			//	new Identity("git-keeper", "no-email@google.com")
+			//	, DateTimeOffset.Now);
+
+			ForeachRepositoryBranch(branch => {
+				var sorted = branch.Select(r => new { repository = r, date = r.Head.Tip.Author.When })
+					.ToList();
+				if (sorted.Count < 2)
+					return;
+
+				sorted.Sort((a, b) => a.date.CompareTo(b.date));
+
+				for (int i = 0; i < sorted.Count; i++)
+				{
+					var lastRepository = sorted.Last();
+					var currentRepository = sorted[i];
+
+					if (currentRepository.date.Equals(lastRepository.date))
+						break;
+
+					Console.WriteLine($"{currentRepository.repository.Path} >> {lastRepository.repository.Path}");
+					using (Utilities.SetCurrentDirectory(currentRepository.repository.Path))
+					{
+						Utilities.ExecuteCommandLine(
+							Utilities.EscapeCommandLineArgs("git", "pull", lastRepository.repository.Path));
+					}
+					//Commands.Pull(currentRepository.repository.Repository
+					//	, lastRepository.repository.Path
+					//	, signature);
+					//sorted[i].repository
+				}
+			});
 		}
 
-		public void Dispose()
+		[Command("check")]
+		public async Task Check([Option(0)] string name = "active")
 		{
+			var active = Configuration.EnumConfigurations()
+				.Where(c => c.name == name)
+				.FirstOrDefault();
+
+			if (active == null)
+				return;
+
+			await LoadConfiguration(active).ConfigureAwait(false);
+
+			ForeachRepositoryBranch(branch => {
+				foreach (var repository in branch)
+				{
+					var isConflict = repository.Repository.Index.Conflicts.Any();
+					var isDirty = repository.Repository.RetrieveStatus().IsDirty;
+
+					if (isConflict || isDirty)
+					{
+						Console.WriteLine($"{repository.Path} {string.Join(" ", isConflict ? "have conflicts" : "", isDirty ? "have changes" : "")}");
+					}
+				}
+			});
 		}
 
 		protected static void Cancel(object sender, ConsoleCancelEventArgs args)
 		{
-			args.Cancel = true; 
+			args.Cancel = true;
 			cancel.Cancel();
 		}
 
@@ -130,8 +127,11 @@ namespace ConsoleApp3
 		{
 			try
 			{
-				await foreach (var rep in GitRepository.EnumGitRepositoriesAsync(path, progress, cancellationToken))
+				foreach (var rep in GitRepository.EnumGitRepositories(path, progress, cancellationToken))
 				{
+					if (rep == null)
+						continue;
+
 					var group = new GitRepositoryGroup(rep);
 					Console.WriteLine("{1}:{2} {0}", rep.Path, group.id, rep.Head?.FriendlyName);
 
@@ -151,8 +151,20 @@ namespace ConsoleApp3
 					}
 				}
 			}
-			catch (AggregateException)
+			catch (AggregateException e)
 			{
+				Console.WriteLine(e);
+			}
+		}
+
+		void ForeachRepositoryBranch(Action<IGrouping<string, GitRepository>> fn)
+		{
+			foreach (var (_, repository) in repositoryByGroup)
+			{
+				foreach (var branch in repository.GroupBy(r => r.Head?.FriendlyName).Where(g => !g.Key.null_ws_()))
+				{
+					fn(branch);
+				}
 			}
 		}
 
@@ -196,21 +208,21 @@ namespace ConsoleApp3
 
 		protected async Task SaveConfiguration(string name)
 		{
-			var c = new Configuration
-			{
-				repositories = repositoryByGroup.Select(r => new Configuration.Repository
-				{
-					id = r.Key.id,
-					instances = r.Value
-								.Select(ri => new Configuration.RepositoryInstance { path = ri.Path, branch = ri.Head?.FriendlyName })
-								.ToList()
-				})
+			var c = new Configuration {
+				repositories = repositoryByGroup
+					.Select(r => new Configuration.Repository {
+						id = r.Key.id,
+						instances = r.Value
+									.Select(ri => new Configuration.RepositoryInstance { path = ri.Path, branch = ri.Head?.FriendlyName })
+									.ToList()
+					})
 					.ToList(),
 				faulty = repositoryWithoutGroup
-						.Select(ri => new Configuration.RepositoryInstance { path = ri.Path, branch = ri.Head?.FriendlyName })
-						.ToList()
+					.Select(ri => new Configuration.RepositoryInstance { path = ri.Path, branch = ri.Head?.FriendlyName })
+					.ToList()
 			};
 			Configuration.SaveConfiguration(name, c);
 		}
 	}
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 }

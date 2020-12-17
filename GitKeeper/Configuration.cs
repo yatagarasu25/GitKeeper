@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using SystemEx;
 
-namespace ConsoleApp3
+namespace GitKeeper
 {
 	public class Configuration
 	{
@@ -74,7 +74,7 @@ namespace ConsoleApp3
 
 		public static IEnumerable<Configuration> EnumConfigurations(string path)
 		{
-			return Directory.EnumerateFiles(path,$"*{_ext_}").Select(p => new Configuration { path = p });
+			return Directory.EnumerateFiles(path, $"*{_ext_}").Select(p => new Configuration { path = p });
 		}
 
 		public static Configuration SaveConfiguration(string name, Configuration configuration)

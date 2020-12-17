@@ -5,9 +5,13 @@
     <TargetFramework>netcoreapp3.1</TargetFramework>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="ConsoleAppFramework" Version="2.2.0" />
-    <PackageReference Include="LibGit2Sharp" Version="0.26.2" />
+    <PackageReference Include="ConsoleAppFramework" Version="3.2.0" />
+    <PackageReference Include="LibGit2Sharp.NativeBinaries" Version="2.0.312" />
     <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.9.8">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -16,7 +20,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\UE4AssistantVSIX\SystemEx\SystemEx.csproj" />
+    <ProjectReference Include="..\Kurukuru\Kurukuru\Kurukuru.csproj" />
+    <ProjectReference Include="..\libgit2sharp\LibGit2Sharp\LibGit2Sharp.csproj" />
+    <ProjectReference Include="..\SystemEx\SystemEx.csproj" />
   </ItemGroup>
 
 </Project>

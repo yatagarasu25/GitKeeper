@@ -1,0 +1,9 @@
+[submodule "SystemEx"]
+	path = SystemEx
+	url = git@github.com:yatagarasu25/SystemEx.git
+[submodule "Kurukuru"]
+	path = Kurukuru
+	url = git@github.com:yatagarasu25/Kurukuru.git
+[submodule "libgit2sharp"]
+	path = libgit2sharp
+	url = git@github.com:yatagarasu25/libgit2sharp.git
