@@ -81,6 +81,11 @@ namespace GitKeeper
 						Utilities.ExecuteCommandLine(
 							Utilities.EscapeCommandLineArgs("git", "pull", lastRepository.repository.Path));
 					}
+					using (Utilities.SetCurrentDirectory(lastRepository.repository.Path))
+					{
+						Utilities.ExecuteCommandLine(
+							Utilities.EscapeCommandLineArgs("git", "pull", currentRepository.repository.Path));
+					}
 					//Commands.Pull(currentRepository.repository.Repository
 					//	, lastRepository.repository.Path
 					//	, signature);
@@ -113,6 +118,13 @@ namespace GitKeeper
 					}
 				}
 			});
+		}
+
+		[Command("list")]
+		public async Task List()
+		{
+			foreach (var cfg in Configuration.EnumConfigurations())
+				Console.WriteLine(cfg.name);
 		}
 
 		protected static void Cancel(object sender, ConsoleCancelEventArgs args)
