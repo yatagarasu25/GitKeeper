@@ -1,8 +1,9 @@
 {
   "profiles": {
-    "ConsoleApp3": {
+    "Gitkeeper Check": {
       "commandName": "Project",
-      "commandLineArgs": "sync workspace"
+      "commandLineArgs": "check",
+      "workingDirectory": "D:\\workspace"
     }
   }
 }

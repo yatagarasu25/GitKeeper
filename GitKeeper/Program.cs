@@ -4,9 +4,7 @@ using LibGit2Sharp;
 using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using SystemEx;
@@ -173,7 +171,7 @@ namespace GitKeeper
 		{
 			foreach (var (_, repository) in repositoryByGroup)
 			{
-				foreach (var branch in repository.GroupBy(r => r.Head?.FriendlyName).Where(g => !g.Key.null_ws_()))
+				foreach (var branch in repository.GroupBy(r => r.Head?.FriendlyName).Where(g => !g.Key.IsNullOrWhiteSpace()))
 				{
 					fn(branch);
 				}
@@ -192,16 +190,25 @@ namespace GitKeeper
 			}
 		}
 
+		GitRepository TryCreateGitRepository(string path)
+		{
+			try { return new GitRepository(path); }
+			catch { return null; }
+		}
+
 		protected async Task LoadConfiguration(Configuration c)
 		{
 			//repositoryByGroup.Union(c.repositories, new KeyValuePairComparer<GitRepositoryGroup, List<GitRepository>>());
 			c = c.Read();
 			repositoryByGroup = c.repositories
 				.ToDictionary(k => new GitRepositoryGroup { id = k.id }
-					, v => v.instances.Select(ri => new GitRepository(ri.path))
+					, v => v.instances
+						.Select(ri => TryCreateGitRepository(ri.path))
+						.Where(ri => ri != null)
 					.ToList());
 			repositoryWithoutGroup = c.faulty
-				.Select(ri => new GitRepository(ri.path))
+				.Select(ri => TryCreateGitRepository(ri.path))
+				.Where(ri => ri != null)
 				.ToList();
 			/*
 			foreach (var rc in c.repositories)
